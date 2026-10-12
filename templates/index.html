@@ -632,6 +632,18 @@
   code { font-family: var(--font-mono); color: var(--accent); }
   .field-gap { margin-top: 12px; }
 
+  .hindsight-upgrade-notice {
+    background: rgba(210, 153, 34, 0.08);
+    border: 1px solid rgba(210, 153, 34, 0.4);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    line-height: 1.55;
+  }
+  .hindsight-upgrade-notice strong { color: var(--yellow); }
+  .hindsight-upgrade-notice p { margin-top: 5px; font-size: 13px; }
+  .hindsight-upgrade-notice a { color: var(--accent2); text-underline-offset: 2px; }
+
   /* ── Guide steps ─────────────────────────────────── */
   .guide-section {
     margin-bottom: 28px;
@@ -1127,6 +1139,11 @@
       </div>
       <div class="panel-body">
 
+        <div class="hindsight-upgrade-notice" x-show="status.hindsight_configured === true" role="note">
+          <strong>Check Hindsight memory after this upgrade</strong>
+          <p>At least one profile uses Hindsight. Hermes v2026.9.24 now loads it from the plugin catalog; this update does not delete your stored memories. Check <a href="/?force=1">Hermes Dashboard</a> &rarr; Memory for each affected profile. If Hindsight is missing, install it from the Hermes plugin catalog for that profile, then test recall and retention.</p>
+        </div>
+
         <div style="background:rgba(98,114,255,0.06);border:1px solid rgba(98,114,255,0.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);">
           New to Hermes? Head over to the <a href="#" @click.prevent="page='guide'" style="color:var(--accent2);text-decoration:none;font-weight:500;">How to Setup</a> section for a step-by-step guide on getting started.
         </div>
@@ -1172,12 +1189,31 @@
             </div>
           </template>
 
+          <!-- Named OpenAI-compatible routing gateways -->
+          <template x-if="providerMap[selectedProvider]?.isRouter">
+            <div>
+              <div class="field-gap">
+                <label class="field-label">Base URL</label>
+                <input type="text"
+                       :value="vars[providerMap[selectedProvider]?.baseUrlKey]||''"
+                       @input="vars[providerMap[selectedProvider].baseUrlKey]=$event.target.value"
+                       :placeholder="providerMap[selectedProvider]?.baseUrlPlaceholder||''">
+                <p class="hint">
+                  <span x-text="providerMap[selectedProvider]?.baseUrlHint"></span>
+                  <a :href="providerMap[selectedProvider]?.docsUrl" target="_blank" rel="noopener"
+                     style="color:var(--accent2);">Setup guide ↗</a>
+                </p>
+              </div>
+            </div>
+          </template>
+
           <div class="field-gap" x-show="selectedProvider && providerMap[selectedProvider]?.key">
             <label class="field-label" x-text="providerMap[selectedProvider]?.keyLabel || 'API Key'"></label>
             <input type="password"
                    :value="selectedProvider ? (vars[providerMap[selectedProvider]?.key]||'') : ''"
                    @input="if(selectedProvider && providerMap[selectedProvider]?.key) vars[providerMap[selectedProvider].key]=$event.target.value"
                    :placeholder="selectedProvider ? (providerMap[selectedProvider]?.placeholder||'Paste your API key') : ''">
+            <p class="hint" x-show="providerMap[selectedProvider]?.keyHint" x-text="providerMap[selectedProvider]?.keyHint"></p>
             <p class="hint warn" x-show="providerKeyPrefixMismatch">
               This key doesn't start with <code x-text="providerMap[selectedProvider]?.keyPrefix"></code>.
               Hermes will ignore it and the bot won't reply — check you copied the whole key.
@@ -1216,19 +1252,20 @@
           <div class="field-gap" x-show="selectedProvider">
             <label class="field-label">LLM Model</label>
             <input type="text" :value="vars.LLM_MODEL||''" @input="vars.LLM_MODEL=$event.target.value"
-                   :placeholder="selectedProvider === 'xAI Grok (SuperGrok)' || selectedProvider === 'xAI' ? 'e.g. grok-4.3'
+                   :placeholder="providerMap[selectedProvider]?.modelPlaceholder || (selectedProvider === 'xAI Grok (SuperGrok)' || selectedProvider === 'xAI' ? 'e.g. grok-4.3'
                      : selectedProvider === 'Anthropic (Claude)' ? 'e.g. claude-sonnet-4-20250514'
                      : selectedProvider === 'AWS Bedrock' ? 'e.g. anthropic.claude-3-5-sonnet-20241022-v2:0'
                      : selectedProvider === 'Fireworks AI' ? 'e.g. accounts/fireworks/models/llama-v3p1-70b-instruct'
                      : selectedProvider === 'MiniMax' || selectedProvider === 'MiniMax (China)' ? 'e.g. MiniMax-M3'
                      : selectedProvider === 'Custom Endpoint' || selectedProvider === 'Azure Foundry' ? 'model-id as required by the endpoint'
-                     : 'e.g. openai/gpt-4o-mini  or  deepseek/deepseek-chat'">
+                     : 'e.g. openai/gpt-4o-mini  or  deepseek/deepseek-chat')">
+            <p class="hint" x-show="providerMap[selectedProvider]?.modelHint" x-text="providerMap[selectedProvider]?.modelHint"></p>
             <p class="hint" x-show="selectedProvider === 'xAI Grok (SuperGrok)' || selectedProvider === 'xAI'">e.g. <code>grok-4.3</code>, <code>grok-4.20-0309-reasoning</code></p>
             <p class="hint" x-show="selectedProvider === 'Anthropic (Claude)'">e.g. <code>claude-sonnet-4-20250514</code>, <code>claude-opus-4-20250115</code></p>
             <p class="hint" x-show="selectedProvider === 'AWS Bedrock'">e.g. <code>anthropic.claude-3-5-sonnet-20241022-v2:0</code>, <code>us.meta.llama3-2-90b-instruct-v1:0</code></p>
             <p class="hint" x-show="selectedProvider === 'Fireworks AI'">Format: <code>accounts/fireworks/models/&lt;model-id&gt;</code></p>
             <p class="hint" x-show="selectedProvider === 'MiniMax' || selectedProvider === 'MiniMax (China)'">e.g. <code>MiniMax-M3</code>, <code>MiniMax-M2.7</code></p>
-            <p class="hint" x-show="!['xAI Grok (SuperGrok)','xAI','Anthropic (Claude)','AWS Bedrock','Fireworks AI','MiniMax','MiniMax (China)','Custom Endpoint','Azure Foundry'].includes(selectedProvider) && selectedProvider">Check your provider's docs for model names. OpenRouter format: <code>provider/model-name</code></p>
+            <p class="hint" x-show="!['xAI Grok (SuperGrok)','xAI','Anthropic (Claude)','AWS Bedrock','Fireworks AI','MiniMax','MiniMax (China)','Custom Endpoint','Azure Foundry','9Router','OmniRoute'].includes(selectedProvider) && selectedProvider">Check your provider's docs for model names. OpenRouter format: <code>provider/model-name</code></p>
           </div>
         </div>
 
@@ -1298,9 +1335,13 @@
                               style="font-size:10px;font-family:var(--font-mono);background:rgba(98,114,255,.15);color:var(--accent2);padding:2px 6px;border-radius:4px;">
                           OAuth
                         </span>
-                        <span x-show="!cp.isOauth && !cp.isCustom && !cp.isBedrock && !cp.isAzure"
+                        <span x-show="!cp.isOauth && !cp.isCustom && !cp.isBedrock && !cp.isAzure && !cp.isRouter"
                               style="font-size:10px;font-family:var(--font-mono);background:rgba(63,185,80,.12);color:var(--green);padding:2px 6px;border-radius:4px;">
                           API key set
+                        </span>
+                        <span x-show="cp.isRouter"
+                              style="font-size:10px;font-family:var(--font-mono);background:rgba(88,166,255,.12);color:var(--accent2);padding:2px 6px;border-radius:4px;">
+                          Router
                         </span>
                         <span x-show="cp.isBedrock"
                               style="font-size:10px;font-family:var(--font-mono);background:rgba(255,153,0,.15);color:#f90;padding:2px 6px;border-radius:4px;">
@@ -1512,6 +1553,24 @@
           <button class="btn success" @click="resumeBot()">▶ Resume</button>
         </div>
 
+        <div class="stat-card" style="margin-bottom:16px;padding:12px 14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <div class="stat-label" style="margin-bottom:0;color:var(--text);">Default Profile Storage</div>
+            <div class="stat-value" style="font-size:14px;"
+                 :class="{green: status.storage?.status==='ok', red: status.storage?.status==='degraded', yellow: status.storage?.status==='unknown'}"
+                 x-text="status.storage?.status==='ok' ? 'Check OK' : status.storage?.status==='degraded' ? 'Needs attention' : 'Unknown'"></div>
+          </div>
+          <div x-show="status.storage?.status==='degraded'" role="alert"
+               style="font-size:12px;color:var(--text);margin-top:8px;">
+            <span x-show="status.storage?.reason==='corrupt'">Hermes reports that state.db is corrupt. Stop the gateway before recovering or restoring a known-good backup; chat history and replies may fail.</span>
+            <span x-show="status.storage?.reason!=='corrupt'">Hermes could not read state.db reliably. Check Logs before relying on chat history or replies.</span>
+          </div>
+          <div x-show="status.storage?.status==='unknown'"
+               style="font-size:12px;color:var(--text);margin-top:8px;">
+            The Hermes dashboard did not return a storage result. Database health is unconfirmed.
+          </div>
+        </div>
+
         <div class="stat-grid">
           <div class="stat-card">
             <div class="stat-label">Gateway State</div>
@@ -1609,6 +1668,7 @@
         </template>
 
         <div class="section-label" style="margin-top:20px;">Approved Users</div>
+        <div class="hint" style="margin-bottom:10px;">Revoke removes the pairing approval. Other Hermes or Railway access rules may still allow this user; remove those separately.</div>
         <div class="empty-state" x-show="approved.length===0">No approved users yet.</div>
         <div class="card" style="padding:0;overflow:hidden;" x-show="approved.length>0">
           <table class="data-table">
@@ -1649,19 +1709,51 @@
       </div>
       <div class="panel-body">
 
-        <div class="section-label">Download Backup</div>
+        <div class="section-label">Create Backup</div>
         <div class="card" style="padding:16px;">
           <p style="font-size:13px;color:var(--text-dim);line-height:1.6;margin:0 0 12px;">
-            Downloads a full snapshot of this deployment — config, provider keys, channel tokens,
-            approved users, chat history, memories, skills, and cron jobs — as a single .zip.
+            Downloads Hermes-home data — config, provider keys, channel tokens,
+            approved users, chat history, skills, cron jobs, and supported provider files — as a single .zip.
+            Hindsight cloud/external memory and embedded PostgreSQL files under /data/.pg0 are not included;
+            back up the external service and the full /data volume separately before relying on this zip for a restore.
             Upload it via Restore below on another deployment to reproduce this bot there.
             <strong style="color:var(--text);">The file is not encrypted</strong> — it contains
             your API keys and bot tokens in plain text, so store it somewhere safe.
           </p>
-          <button class="btn" @click="downloadBackup()" :disabled="backupBusy">
-            <span x-show="!backupBusy">⬇ Download Backup</span>
-            <span x-show="backupBusy">Preparing…</span>
+          <button class="btn" @click="createBackup()" :disabled="backupBusy || backupJobs.some(j => j.status === 'running')">
+            <span x-show="!backupBusy">Create Backup</span>
+            <span x-show="backupBusy">Starting…</span>
           </button>
+          <button class="btn" type="button" @click="loadBackupJobs()" style="margin-left:8px;">Refresh status</button>
+          <div class="restore-result err" x-show="backupStatusError || backupActionError" role="alert" x-cloak>
+            <span x-text="backupActionError || backupStatusError"></span>
+          </div>
+          <div x-show="backupJobs.length" x-cloak style="margin-top:16px;" role="status" aria-live="polite">
+            <template x-for="job in backupJobs" :key="job.id">
+              <div style="padding:11px 0;border-top:1px solid var(--border);font-size:13px;line-height:1.55;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                  <strong x-text="job.status === 'running' ? 'Creating backup' : job.status === 'ready' ? 'Backup ready' : job.status === 'failed' ? 'Backup failed' : 'Backup expired'"></strong>
+                  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <span style="color:var(--text-dim);" x-text="fmtDate(job.started_at)"></span>
+                    <button class="btn sm danger" type="button" @click="removeBackupJob(job)"
+                            :disabled="job.status === 'running' || !!removingBackupId"
+                            :aria-label="'Remove backup from ' + fmtDate(job.started_at)">
+                      <span x-text="removingBackupId === job.id ? 'Removing…' : 'Remove'"></span>
+                    </button>
+                  </div>
+                </div>
+                <div x-show="job.status === 'ready' || job.status === 'running'"
+                     style="color:var(--text-dim);margin-top:3px;" x-text="backupJobText(job)"></div>
+                <div x-show="job.warning" x-text="job.warning" style="color:var(--yellow);margin-top:5px;"></div>
+                <div x-show="job.error" x-text="job.error" style="color:var(--red);margin-top:5px;"></div>
+                <a class="btn sm" x-show="job.status === 'ready'" :href="job.download_url" download
+                   style="display:inline-block;margin-top:9px;">Download ZIP</a>
+              </div>
+            </template>
+          </div>
+          <p x-show="backupJobs.length" x-cloak style="color:var(--text-dim);font-size:12px;line-height:1.5;margin:10px 0 0;">
+            Prepared files remain available for 6 hours while this container is running. Download one before redeploying.
+          </p>
         </div>
 
         <div class="section-label" style="margin-top:20px;">Restore from Backup</div>
@@ -1692,7 +1784,7 @@
               <span x-show="!restoreFile">Drop a backup .zip here, or <span class="dropzone-link">browse</span></span>
               <span x-show="restoreFile" class="dropzone-file" x-text="restoreFile ? restoreFile.name : ''"></span>
             </div>
-            <div class="dropzone-sub" x-show="!restoreFile">Only .zip files created by Download Backup</div>
+            <div class="dropzone-sub" x-show="!restoreFile">Only .zip files created by Backup &amp; Restore</div>
             <div class="dropzone-sub" x-show="restoreFile" x-text="restoreFile ? fmtBytes(restoreFile.size) + ' — click or drop again to replace' : ''"></div>
           </label>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
@@ -1828,7 +1920,8 @@
         <div style="background:rgba(98,114,255,0.06);border:1px solid rgba(98,114,255,0.2);border-radius:8px;padding:12px 15px;margin-bottom:20px;font-size:13px;color:var(--text-dim);line-height:1.6;">
           <div style="margin-bottom:8px;">
             <code>main</code> always ships the <strong style="color:var(--text);">latest</strong> release — that is what you get by default.
-            To stay on, or roll back to, a particular Hermes version, point your Railway service at that release's branch and redeploy.
+            To stay on a particular Hermes version, point your Railway service at that release's branch and redeploy.
+            Reverting the branch does not undo changes already made to the persistent volume; restore a pre-upgrade backup if its data must also be rolled back.
           </div>
           <div>
             Release branches are named <code>release/&lt;hermes-version&gt;/&lt;n&gt;</code>.
@@ -1836,6 +1929,156 @@
             template-only fixes and improvements on top of it — the Hermes version never changes within a series.
             <strong style="color:var(--text);">Pick the highest number</strong> for the Hermes version you want; each branch stays put once published.
           </div>
+        </div>
+
+        <div class="changelog-entry major">
+          <div class="changelog-date">October 6, 2026</div>
+          <div class="changelog-meta">
+            <span class="meta-box">
+              <span class="meta-label">Git branch</span>
+              <code>release/v2026.9.24/1</code>
+            </span>
+            <span class="meta-box version">
+              <span class="meta-label">Hermes compatible version</span>
+              <code>v2026.9.24</code>
+            </span>
+          </div>
+
+          <div class="changelog-group">Hermes update</div>
+          <ul class="changelog-list">
+            <li>Updated <strong>Hermes Agent to v2026.9.24</strong> (from v2026.9.21). Browser Chat now lets you choose a workspace for a new session.</li>
+            <li><strong>Hindsight memory is now a catalog plugin.</strong> This update does not delete your stored memory bank or saved settings. If Hindsight is configured, Setup shows a notice to check each affected profile. Install a missing plugin from the Hermes catalog for that profile, then test recall and retention. Embedded mode remains unavailable in this default root-running image.</li>
+            <li><strong>Back up Hindsight data separately for rollback or cloning.</strong> The Hermes zip does not include external memory or embedded PostgreSQL under <code>/data/.pg0</code>; this existing limit is now explained on the Backup page.</li>
+            <li><strong>Bot Screen is not available in this Railway image.</strong> Browser Chat and its new workspace picker work here; the Desktop screen viewer needs a separate runtime and proxy integration.</li>
+            <li><strong>Old named-profile replies may need attention.</strong> Hermes now records new outgoing replies in the root ledger. Startup warns and continues when it finds an old unfinished reply; a sender can ask again, but that starts a new turn and may repeat tool actions. An unreadable ledger still stops the upgrade.</li>
+            <li><strong>Use full IDs in hand-written allowlists.</strong> A short entry like <code>alice</code> no longer grants access to <code>alice@example.com</code>; users approved in this panel already have full IDs.</li>
+          </ul>
+
+          <div class="changelog-group">Changes to support upstream updates</div>
+          <ul class="changelog-list">
+            <li><strong>Existing configs run through Hermes' backed-up migration before startup, including named profiles.</strong> Older profile instructions and the template's model setting are protected if migration fails. Check warnings and confirm that an old MCP server marked disabled now stays off.</li>
+            <li><strong>Restore refuses an incomplete safety backup.</strong> Databases with the same name in different profiles are checked separately before existing data is changed.</li>
+          </ul>
+
+          <div class="changelog-group">Bug fixes</div>
+          <ul class="changelog-list">
+            <li><strong>Large manual backups now run as visible background jobs.</strong> Create one from Backup &amp; Restore, watch its phase and file count, and download the prepared ZIP in a separate request. The job and its outcome remain visible after a page reload. Prepared downloads remain available for 6 hours while the container stays up; a restart clearly marks an interrupted or unavailable job so it can be retried.</li>
+            <li><strong>Backup entries can be removed individually.</strong> Remove clears an expired or failed entry; removing a ready backup also deletes its prepared ZIP after confirmation. A running backup or active download is protected.</li>
+            <li><strong>Unreadable config is no longer replaced.</strong> Save, gateway start and xAI OAuth show an error so you can repair the original file.</li>
+            <li><strong>Pairing approvals survive legacy folder aliases and interrupted writes.</strong> Revoke warns when another access rule may still grant access instead of claiming the user was blocked.</li>
+            <li><strong>Status now flags detected chat-history storage problems; Dashboard Stop stays stopped, and planned Restarts no longer count as crashes.</strong></li>
+            <li><strong>Runtime setup warnings now explain what survives redeploy.</strong> Hermes packages on <code>/data</code> persist, while some provider-specific installers may need to be run again.</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry major">
+          <div class="changelog-date">September 23, 2026</div>
+          <div class="changelog-meta">
+            <span class="meta-box">
+              <span class="meta-label">Git branch</span>
+              <code>release/v2026.9.21/1</code>
+            </span>
+            <span class="meta-box version">
+              <span class="meta-label">Hermes compatible version</span>
+              <code>v2026.9.21</code>
+            </span>
+          </div>
+
+          <div class="changelog-group">Hermes update</div>
+          <ul class="changelog-list">
+            <li>Updated <strong>Hermes Agent to v2026.9.21</strong> (from v2026.9.11).</li>
+            <li><strong>One gateway can now run every profile on this deployment.</strong> When you have named profiles, configure and pair them from the native Hermes Dashboard's profile selector. This Setup panel remains for the default profile, and its Start/Stop/Restart buttons affect the shared gateway and every profile it serves.</li>
+            <li><strong>Temporary provider outages recover automatically.</strong> After the normal retries and backup providers are exhausted, Hermes waits and tries again with a visible countdown instead of ending the turn immediately.</li>
+            <li><strong>Large conversations compact sooner</strong> so million-token context windows do not grow to roughly half a million tokens before their first summary.</li>
+            <li><strong>More capabilities arrive automatically:</strong> iPhone HEIC/HEIF images, GPT-Live voice sessions, OpenAI-native web search, OpenRouter video generation, faster lazy MCP startup and n8n's official browser-OAuth connection.</li>
+            <li><strong>OpenCode Free was retired upstream.</strong> If your model used <code>opencode-free</code>, switch to OpenCode Zen or OpenCode Go and enter that service's API key. We do not switch it automatically because the replacements require an account and may cost money.</li>
+            <li><strong>Fresh deployments show model reasoning by default.</strong> Existing deployments keep their saved choice; toggle it any time with <code>/reasoning show</code> or <code>/reasoning hide</code>.</li>
+          </ul>
+
+          <div class="changelog-group">Changes to support upstream updates</div>
+          <ul class="changelog-list">
+            <li><strong>Valid restores are no longer rejected over disposable databases.</strong> The backup checker now agrees with every cache and browser-profile folder Hermes deliberately leaves out.</li>
+            <li><strong>A partial manual backup is still downloadable.</strong> If Hermes cannot include one or more files, you receive the useful remainder with a clear warning; an automatic safety snapshot before Restore remains strictly all-or-nothing.</li>
+            <li><strong>Temporary browser, PTY and Python files stay off your storage volume.</strong> They use the container's temporary disk and disappear on redeploy.</li>
+            <li><strong>Session history now uses the fixed SQLite runtime from Hermes' official image.</strong> This avoids an upstream WAL-reset corruption bug and makes the new full-text-search health check pass on fresh and restored databases.</li>
+            <li><strong>Dashboard restarts wait for database and Chat cleanup.</strong> Save, Restore and Restart now allow enough time for Hermes to finish closing its workers instead of force-killing them after five seconds.</li>
+            <li><strong>An open Chat reconnects after a dashboard restart.</strong> Its terminal connection retries automatically instead of getting stuck on an expired local token; deployments with the public auth gate continue to use fresh one-time WebSocket tickets.</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry major">
+          <div class="changelog-date">September 12, 2026</div>
+          <div class="changelog-meta">
+            <span class="meta-box">
+              <span class="meta-label">Git branch</span>
+              <code>release/v2026.9.11/1</code>
+            </span>
+            <span class="meta-box version">
+              <span class="meta-label">Hermes compatible version</span>
+              <code>v2026.9.11</code>
+            </span>
+          </div>
+
+          <div class="changelog-group">Hermes update</div>
+          <ul class="changelog-list">
+            <li>Updated <strong>Hermes Agent to v2026.9.11</strong> (from v2026.8.31). Two web-search providers join Setup &mdash; <strong>Tavily</strong>, which Hermes removed last release and has now restored, and <strong>Perplexity</strong>, which is new.</li>
+            <li><strong>The bot gives up on work it cannot finish.</strong> A tool call that keeps failing used to be retried until the turn ran out; it now stops after a few attempts and says so, which caps what a stuck job can cost you.</li>
+            <li><strong>Conversations no longer reset on their own.</strong> Hermes retired the automatic idle and daily reset &mdash; a chat now continues until you send <code>/new</code> or <code>/reset</code>.</li>
+            <li><strong>Finished conversations older than 90 days now get tidied up.</strong> Hermes turned this on to stop the chat history growing without bound. Open, pinned and in-progress chats are never touched, and the sweep only runs when something starts a Hermes command line &mdash; opening the <strong>Chat</strong> tab, for instance &mdash; at most once a day.</li>
+            <li><strong>A bot that hangs while starting now recovers by itself.</strong> Hermes watches its own startup and restarts if it wedges, instead of sitting there looking healthy while answering nothing.</li>
+            <li><strong>Group chat state starts fresh.</strong> Hermes moved that data into a new file and does not carry the old one across.</li>
+            <li><strong>If you installed a community plugin, check it still loads.</strong> Hermes reorganised its internals and retired the old compatibility paths on September 14. Update the plugin, or set <code>plugins.allow_deprecated_imports: true</code> from the Hermes <strong>Config</strong> tab.</li>
+          </ul>
+
+          <div class="changelog-group">Changes to support upstream updates</div>
+          <ul class="changelog-list">
+            <li><strong>Tavily is back in Setup, and Perplexity is there too.</strong> If you had picked Tavily as your search engine before it was removed, searches have been failing since &mdash; they work again, and your saved key was never touched.</li>
+            <li><strong>Restores keep working alongside Hermes&rsquo; new local-model storage.</strong> Hermes added folders for downloaded models and runtimes that it deliberately leaves out of a backup; this template now agrees with it, so a restore can no longer be refused over a file that was never meant to be in the archive.</li>
+            <li><strong>A bot token already in use can no longer keep you offline after a redeploy.</strong> Hermes now treats that as a fatal startup error rather than retrying, so the record that tracks it is kept out of your storage where it cannot outlive a restart.</li>
+          </ul>
+
+          <div class="changelog-group">Bug fixes</div>
+          <ul class="changelog-list">
+            <li><strong>A bot that fails slowly now stops retrying and tells you.</strong> The restart guard only counted failures that repeated within two minutes, so a slower loop could restart every five minutes indefinitely while Status still read &ldquo;running&rdquo;.</li>
+            <li><strong>Stopped writing a setting Hermes no longer reads.</strong> The conversation-reset policy is now inert upstream, so saving it only left a dead entry in your config file.</li>
+          </ul>
+        </div>
+
+        <div class="changelog-entry major">
+          <div class="changelog-date">September 6, 2026</div>
+          <div class="changelog-meta">
+            <span class="meta-box">
+              <span class="meta-label">Git branch</span>
+              <code>release/v2026.8.31/1</code>
+            </span>
+            <span class="meta-box version">
+              <span class="meta-label">Hermes compatible version</span>
+              <code>v2026.8.31</code>
+            </span>
+          </div>
+
+          <div class="changelog-group">Hermes update</div>
+          <ul class="changelog-list">
+            <li>Updated <strong>Hermes Agent to v2026.8.31</strong> (from v2026.8.27). Three more AI providers &mdash; <strong>Tencent TokenPlan</strong>, <strong>Ramp Router</strong> and <strong>Nebius</strong> &mdash; are available from the Hermes Dashboard &rarr; Keys tab, and Kanban boards can now be exported and imported.</li>
+            <li><strong>Scanned PDFs can be read now.</strong> If you have a Firecrawl key saved, pages that are just images of text get sent for OCR instead of coming back empty.</li>
+            <li><strong>Messaging the bot while it is still answering gets a reply.</strong> Hermes used to hold that message silently for up to 30 minutes; it now tells you within a few seconds to resend once the current answer is finished.</li>
+            <li><strong>Connecting a Claude Pro/Max subscription moved out of the dashboard.</strong> Hermes removed that button for policy reasons. Open the <strong>Chat</strong> tab's terminal and run <code>hermes auth add anthropic</code> instead &mdash; plain Anthropic API keys are unaffected.</li>
+          </ul>
+
+          <div class="changelog-group">Changes to support upstream updates</div>
+          <ul class="changelog-list">
+            <li><strong>Reading PDFs and Office files keeps working.</strong> Hermes made its document reader a built-in part of the package. This template used to install its own copy on top, which would now replace it with an older version Hermes then refuses to use &mdash; every PDF, Word, Excel and PowerPoint read would have failed on every deploy, retrying silently in the background forever. The extra copy is gone.</li>
+            <li><strong>Tavily search was removed from Hermes, so Setup offers Keenable instead.</strong> If you had picked Tavily as your search engine in the Hermes <strong>Tools</strong> tab, pick another one there &mdash; searches error until you do. Any Tavily key you saved is left untouched, just unused.</li>
+            <li><strong>Restarting waits for the bot to finish writing to disk.</strong> Hermes now takes longer to shut down when a scheduled job is running, and we were cutting it off part-way &mdash; something Hermes itself now documents as a cause of database corruption.</li>
+            <li><strong>Temporary files stay out of your storage.</strong> Hermes moved the bot's command scratch space onto your data volume; it is back in the container's temporary space, so backups stay small and a restore can't be blocked by leftovers.</li>
+          </ul>
+
+          <div class="changelog-group">Bug fixes</div>
+          <ul class="changelog-list">
+            <li><strong>Switching profiles from the Chat terminal no longer hijacks the bot.</strong> Running <code>hermes profile use</code> could quietly move the bot and the dashboard onto that profile at the next restart, so your approved users and settings appeared to vanish while the bot kept running as someone else.</li>
+            <li><strong>Dashboard sign-in keys saved into the config file can no longer lock you out.</strong> If they ever landed there &mdash; through a restore or the Keys tab &mdash; every Hermes page showed a sign-in error until a redeploy. They are now removed automatically at startup.</li>
+            <li><strong>A broken configuration no longer restarts in a loop.</strong> When the bot cannot start because of a settings problem, the gateway now stops and says so plainly instead of retrying the same failure five times.</li>
+          </ul>
         </div>
 
         <div class="changelog-entry major">
@@ -2074,7 +2317,9 @@ function app() {
   const tools = [
     { key: 'PARALLEL_API_KEY',       label: 'Parallel (search)',         secret: true  },
     { key: 'FIRECRAWL_API_KEY',      label: 'Firecrawl (scraping)',       secret: true  },
+    { key: 'KEENABLE_API_KEY',       label: 'Keenable (search)',          secret: true  },
     { key: 'TAVILY_API_KEY',         label: 'Tavily (search)',            secret: true  },
+    { key: 'PERPLEXITY_API_KEY',     label: 'Perplexity (search)',        secret: true  },
     { key: 'FAL_KEY',                label: 'FAL (image gen)',            secret: true  },
     { key: 'BROWSERBASE_API_KEY',    label: 'Browserbase',                secret: true  },
     { key: 'GITHUB_TOKEN',           label: 'GitHub',                     secret: true  },
@@ -2096,7 +2341,12 @@ function app() {
     pending: [],
     approved: [],
     snapshots: [],
+    backupJobs: [],
+    backupJobsRequestSeq: 0,
+    backupStatusError: '',
+    backupActionError: '',
     backupBusy: false,
+    removingBackupId: null,
     restoreBusy: false,
     restoreFile: null,
     restoreDragging: false,
@@ -2145,6 +2395,28 @@ function app() {
       'Kilo Code':            { key: 'KILOCODE_API_KEY',         modelKey: '_MODEL_KILOCODE_API_KEY',         placeholder: '' },
       'Ollama Cloud':         { key: 'OLLAMA_API_KEY',           modelKey: '_MODEL_OLLAMA_API_KEY',           placeholder: '' },
       'Azure Foundry':        { key: 'AZURE_FOUNDRY_API_KEY',   modelKey: '_MODEL_AZURE_FOUNDRY_API_KEY',   placeholder: '', isAzure: true },
+      '9Router':              {
+        key: 'NINEROUTER_API_KEY', modelKey: '_MODEL_NINEROUTER_API_KEY',
+        baseUrlKey: 'NINEROUTER_BASE_URL', isRouter: true,
+        keyLabel: '9Router Endpoint API Key', placeholder: 'Paste the key from your 9Router dashboard',
+        keyHint: 'Create or copy an endpoint key from the 9Router dashboard.',
+        baseUrlPlaceholder: 'https://your-9router.example.com/v1',
+        baseUrlHint: 'Enter the reachable OpenAI-compatible URL ending in /v1. From Railway, prefer the router service’s private URL instead of localhost. ',
+        modelPlaceholder: 'e.g. cc/claude-sonnet-4-6 or a combo name',
+        modelHint: 'Use an exact model or combo shown by 9Router’s /v1/models endpoint.',
+        docsUrl: 'https://docs.9router.com/',
+      },
+      'OmniRoute':            {
+        key: 'OMNIROUTE_API_KEY', modelKey: '_MODEL_OMNIROUTE_API_KEY',
+        baseUrlKey: 'OMNIROUTE_BASE_URL', isRouter: true, defaultModel: 'auto',
+        keyLabel: 'OmniRoute Endpoint API Key', placeholder: 'Paste the key from Dashboard → Endpoints',
+        keyHint: 'Create or copy an endpoint key from OmniRoute Dashboard → Endpoints.',
+        baseUrlPlaceholder: 'https://your-omniroute.example.com/v1',
+        baseUrlHint: 'Enter the reachable OpenAI-compatible URL ending in /v1. From Railway, prefer the router service’s private URL instead of localhost. ',
+        modelPlaceholder: 'auto (recommended) or an exact model/combo',
+        modelHint: '“auto” uses OmniRoute’s smart routing; you can also enter an exact model or combo.',
+        docsUrl: 'https://github.com/diegosouzapw/OmniRoute#-quick-start',
+      },
       'Custom Endpoint':      { key: 'CUSTOM_PROVIDER_API_KEY',modelKey: '_MODEL_CUSTOM_PROVIDER_API_KEY',placeholder: '',         isCustom: true },
       'xAI Grok (SuperGrok)': { key: null,                     modelKey: '_MODEL_XAI_OAUTH',              isOauth: 'xai' },
     },
@@ -2172,9 +2444,11 @@ function app() {
         } else if (p.isCustom && this.vars[p.key]) {
           const displayName = this.vars.CUSTOM_PROVIDER_NAME || this.vars.CUSTOM_PROVIDER_BASE_URL || 'Custom Endpoint';
           list.push({ providerKey: name, name: displayName, model: p.modelKey ? (this.vars[p.modelKey] || '') : '', key: p.key, isCustom: true });
+        } else if (p.isRouter && this.vars[p.key] && this.vars[p.baseUrlKey]) {
+          list.push({ providerKey: name, name, model: p.modelKey ? (this.vars[p.modelKey] || '') : '', key: p.key, isRouter: true });
         } else if (p.isAzure && this.vars[p.key] && this.vars.AZURE_FOUNDRY_BASE_URL) {
           list.push({ providerKey: name, name, model: p.modelKey ? (this.vars[p.modelKey] || '') : '', key: p.key, isAzure: true });
-        } else if (p.key && !p.isCustom && !p.isAzure && this.vars[p.key]) {
+        } else if (p.key && !p.isCustom && !p.isAzure && !p.isRouter && this.vars[p.key]) {
           list.push({ providerKey: name, name, model: p.modelKey ? (this.vars[p.modelKey] || '') : '', key: p.key, modelKey: p.modelKey || null, isBedrock: !!p.isBedrock });
         }
       }
@@ -2200,6 +2474,8 @@ function app() {
       // Load the per-provider stored model so the model field pre-fills.
       const storedModel = p.modelKey ? this.vars[p.modelKey] : null;
       if (storedModel) this.vars.LLM_MODEL = storedModel;
+      else if (p.defaultModel) this.vars.LLM_MODEL = p.defaultModel;
+      else if (p.isRouter) this.vars.LLM_MODEL = '';
       // Reset xAI flow state if switching away (unless already fully authorized).
       if (p.isOauth !== 'xai' && this.xai.status !== 'authorized') {
         this.xai.status = 'none';
@@ -2229,6 +2505,9 @@ function app() {
       }
       if (p.isAzure) {
         this.vars.AZURE_FOUNDRY_BASE_URL = '';
+      }
+      if (p.isRouter && p.baseUrlKey) {
+        this.vars[p.baseUrlKey] = '';
       }
       if (this.selectedProvider === providerKey) this.selectedProvider = '';
       try {
@@ -2296,10 +2575,13 @@ function app() {
       // setup form — and on the Backup page that looks like the restore blew up.
       ['dragover','drop'].forEach(evt =>
         window.addEventListener(evt, e => { e.preventDefault(); }, false));
-      await Promise.all([this.loadConfig(), this.loadStatus(), this.loadLogs(), this.loadPairing(), this.loadSnapshots()]);
+      await Promise.all([this.loadConfig(), this.loadStatus(), this.loadLogs(), this.loadPairing(), this.loadSnapshots(), this.loadBackupJobs()]);
       setInterval(() => this.loadStatus(),  5000);
       setInterval(() => this.loadLogs(),    3000);
       setInterval(() => this.loadPairing(), 5000);
+      setInterval(() => {
+        if (this.page === 'backup' || this.backupJobs.some(j => j.status === 'running')) this.loadBackupJobs();
+      }, 3000);
     },
 
     async loadConfig() {
@@ -2438,37 +2720,89 @@ function app() {
     },
     async revoke(platform, user_id) {
       if (!confirm('Revoke access for this user?')) return;
-      await fetch('/setup/api/pairing/revoke', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({platform,user_id}) });
-      this.notify('Revoked', true); await this.loadPairing();
+      try {
+        const r = await fetch('/setup/api/pairing/revoke', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({platform,user_id}) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok) this.notify(d.warning || 'Pairing approval removed', true);
+        else this.notify(d.error || 'Could not revoke access', false);
+        await this.loadPairing();
+      } catch (e) { this.notify('Could not revoke access: ' + e.message, false); }
     },
 
-    async downloadBackup() {
-      this.backupBusy = true;
+    backupJobText(job) {
+      if (job.status === 'ready') return `${this.fmtBytes(job.size_bytes)} · Download by ${this.fmtDate(job.expires_at)}`;
+      if (job.status !== 'running') return '';
+      const stage = job.phase === 'verifying' ? 'Verifying archive' :
+                    job.phase === 'archiving' ? 'Writing archive' :
+                    job.phase === 'scanning' ? 'Scanning files' : 'Starting Hermes backup';
+      const count = job.total_files ? ` · ${job.completed_files || 0} of ${job.total_files} files` : '';
+      return `${stage}${count} · ${this.fmtUptime(job.elapsed_seconds)} elapsed`;
+    },
+
+    async loadBackupJobs() {
+      const requestSeq = ++this.backupJobsRequestSeq;
       try {
-        const r = await fetch('/setup/api/backup/download');
-        if (!r.ok) {
-          const e = await r.json().catch(() => ({}));
-          this.notify(e?.error || 'Backup failed', false);
-          return;
-        }
-        // Set by the server when the archive is missing state.db — hermes can
-        // now drop it and still exit 0, so a "successful" backup may not be a
-        // usable one. Surface it rather than hand over a silent partial.
-        const backupWarning = r.headers.get('x-backup-warning');
-        const blob = await r.blob();
-        const disposition = r.headers.get('content-disposition') || '';
-        const match = disposition.match(/filename="?([^"]+)"?/);
-        const filename = match ? match[1] : `hermes-backup-${Date.now()}.zip`;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-        this.notify(backupWarning || 'Backup downloaded', !backupWarning);
+        const r = await fetch('/setup/api/backup/jobs', {cache: 'no-store'});
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Could not read backup status');
+        if (requestSeq !== this.backupJobsRequestSeq) return;
+        this.backupJobs = data.jobs || [];
+        this.backupStatusError = '';
       } catch (e) {
-        this.notify('Backup failed: ' + e.message, false);
+        if (requestSeq !== this.backupJobsRequestSeq) return;
+        this.backupStatusError = `Could not refresh backup status: ${e.message}. Retry with Refresh status.`;
+      }
+    },
+
+    async createBackup() {
+      this.backupBusy = true;
+      this.backupActionError = '';
+      const attemptedAt = Date.now() / 1000;
+      try {
+        const r = await fetch('/setup/api/backup/jobs', {method: 'POST'});
+        const data = await r.json();
+        if (!r.ok) {
+          throw new Error(data.error || 'Could not start backup');
+        }
+        this.backupJobsRequestSeq++;
+        this.backupJobs = [data.job, ...this.backupJobs.filter(j => j.id !== data.job.id)];
+        this.backupStatusError = '';
+      } catch (e) {
+        // The start response can be lost after the server accepted the job.
+        // Re-read durable job state before telling the user to start another.
+        await this.loadBackupJobs();
+        if (!this.backupJobs.some(j => j.status === 'running' || j.started_at >= attemptedAt - 2)) {
+          this.backupStatusError = `Could not confirm a new backup: ${e.message}. Refresh status before retrying.`;
+        }
       }
       this.backupBusy = false;
+    },
+
+    async removeBackupJob(job) {
+      if (job.status === 'running' || this.removingBackupId) return;
+      const message = job.status === 'ready'
+        ? 'Remove this backup and permanently delete its prepared ZIP? Download it first if you need it.'
+        : 'Remove this backup entry from the list?';
+      if (!confirm(message)) return;
+      this.removingBackupId = job.id;
+      this.backupActionError = '';
+      try {
+        const r = await fetch(`/setup/api/backup/jobs/${encodeURIComponent(job.id)}`, {method: 'DELETE'});
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || 'The server could not remove this backup');
+        this.backupJobsRequestSeq++;
+        this.backupJobs = this.backupJobs.filter(item => item.id !== job.id);
+        await this.loadBackupJobs();
+      } catch (e) {
+        // A lost response may arrive after the server removed the job. Re-read
+        // before showing an error or encouraging another click.
+        await this.loadBackupJobs();
+        if (this.backupJobs.some(item => item.id === job.id)) {
+          this.backupActionError = `Could not remove backup: ${e.message}`;
+        }
+      } finally {
+        this.removingBackupId = null;
+      }
     },
 
     async loadSnapshots() {

@@ -1,4 +1,65 @@
+# Hermes v2026.9.21 introduced a SQLite build without the upstream WAL-reset
+# corruption bug. Debian Bookworm's 3.40.1 is affected and also makes Hermes'
+# new FTS write-health probe fail with a generic "SQL logic error" on every
+# freshly-created state.db. Build the same pinned SQLite release and feature
+# set as Hermes' official image, but on Bookworm so the shared library remains
+# compatible with this template's Python 3.12 Bookworm runtime.
+FROM debian:bookworm-slim AS sqlite_build
+ARG SQLITE_AUTOCONF_VERSION=3530400
+ARG SQLITE_SHA256=0e9483900e92cd5de8fd48d16bf9200145a61f7fd5be542a5ac81d8a9516eb9c
+RUN apt-get -o Acquire::Retries=3 update && \
+    apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+        build-essential ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    (curl -fsSL --retry 1 --retry-all-errors --connect-timeout 15 --max-time 60 \
+        -o /tmp/sqlite.tar.gz \
+        "https://sqlite.org/2026/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" || \
+     curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 \
+        -o /tmp/sqlite.tar.gz \
+        "https://sources.buildroot.net/sqlite/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz") && \
+    printf '%s  %s\n' "${SQLITE_SHA256}" /tmp/sqlite.tar.gz > /tmp/sqlite.sha256 && \
+    sha256sum -c /tmp/sqlite.sha256 && \
+    tar -xzf /tmp/sqlite.tar.gz -C /tmp && \
+    cd "/tmp/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}" && \
+    CFLAGS="-O2 \
+        -DSQLITE_ENABLE_FTS3 \
+        -DSQLITE_ENABLE_FTS3_PARENTHESIS \
+        -DSQLITE_ENABLE_FTS4 \
+        -DSQLITE_ENABLE_FTS5 \
+        -DSQLITE_ENABLE_RTREE \
+        -DSQLITE_ENABLE_GEOPOLY \
+        -DSQLITE_ENABLE_COLUMN_METADATA \
+        -DSQLITE_ENABLE_UNLOCK_NOTIFY \
+        -DSQLITE_ENABLE_DBSTAT_VTAB \
+        -DSQLITE_ENABLE_DBPAGE_VTAB \
+        -DSQLITE_ENABLE_MATH_FUNCTIONS \
+        -DSQLITE_ENABLE_PREUPDATE_HOOK \
+        -DSQLITE_ENABLE_SESSION \
+        -DSQLITE_SECURE_DELETE \
+        -DSQLITE_THREADSAFE=1 \
+        -DSQLITE_MAX_VARIABLE_NUMBER=250000" \
+        ./configure --prefix=/opt/sqlite-fixed --disable-static && \
+    make -j"$(nproc)" && \
+    make install
+
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+# Prefer the fixed SQLite over Bookworm's vulnerable libsqlite3.so.0. Verify
+# both the version and the trigram tokenizer during the image build so a loader
+# path or compile-option regression fails here rather than against user data.
+COPY --from=sqlite_build /opt/sqlite-fixed/lib/libsqlite3.so.3.53.4 /usr/local/lib/
+RUN ln -sf libsqlite3.so.3.53.4 /usr/local/lib/libsqlite3.so.0 && \
+    ln -sf libsqlite3.so.3.53.4 /usr/local/lib/libsqlite3.so && \
+    printf '/usr/local/lib\n' > /etc/ld.so.conf.d/000-sqlite-fixed.conf && \
+    ldconfig && \
+    python3 -c "import sqlite3, sys; \
+v = sqlite3.sqlite_version_info; \
+sys.exit(f'linked SQLite {sqlite3.sqlite_version} still has the WAL-reset bug') if v < (3, 51, 3) else None; \
+db = sqlite3.connect(':memory:'); \
+db.execute(\"CREATE VIRTUAL TABLE docs USING fts5(content, tokenize='trigram')\"); \
+db.execute(\"INSERT INTO docs VALUES ('hermes')\"); \
+sys.exit('SQLite FTS5 trigram self-test failed') if db.execute(\"SELECT count(*) FROM docs WHERE docs MATCH 'erm'\").fetchone()[0] != 1 else None; \
+db.close()"
 
 # Which hermes-agent revision to install. Accepts any git ref the upstream
 # repo publishes — a release tag (recommended for reproducibility) or a
@@ -8,7 +69,7 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 # newest tag (format `vYYYY.M.D`, optionally with a `.PATCH` suffix, e.g.
 # `v2026.5.29.2`) and update the default below. Use `main` only if you accept
 # that every rebuild can pull arbitrary new upstream commits.
-ARG HERMES_REF=v2026.8.27
+ARG HERMES_REF=v2026.9.24
 
 # Persist the build arg into the runtime env so the admin UI can display which
 # Hermes release this image actually pins. Reading it (rather than hardcoding a
@@ -44,12 +105,15 @@ RUN apt-get update && \
 # [all] in v2026.6.5 no longer pulls in [dev]; messaging platforms, TTS, and
 # other heavy backends are lazy-installed by hermes at first use. We pre-install
 # the ones this template actually uses so first-message latency is instant.
-# `vision` (Pillow) is a soft-dep that is NOT in [all] and is otherwise
-# lazy-installed at first image use: without it hermes can't downscale an
-# oversized image (>5 MB / >8000px), which then bakes into immutable history
-# and bricks the session on Anthropic's non-retryable 400. We bake it in.
+# `vision` guards image downscaling (without Pillow an oversized image >5 MB /
+# >8000px bakes into immutable history and bricks the session on Anthropic's
+# non-retryable 400). The extra itself has been EMPTY since v2026.6.19 — Pillow
+# moved into core deps — so it resolves to a no-op; kept for back-compat.
 # When bumping HERMES_REF, re-check hermes-agent's pyproject.toml [all] and
 # the extras below against the new release's pyproject.toml.
+# v2026.9.24 moved Hindsight out of the bundled provider/extras into its
+# plugin catalog. Do not request the retired [hindsight] extra or bake its old
+# hindsight-client==0.6.1 ahead of the catalog plugin's newer dependency.
 #
 # The `-e` is LOAD-BEARING since v2026.8.3: upstream's new setup.py raises on
 # bdist_wheel/sdist unless HERMES_NIX_BUILD=1. PEP 660 editable installs route
@@ -61,15 +125,16 @@ RUN apt-get update && \
 # exclude-newer="14 days" can fail a build on a fresh dep — override with
 # `uv pip install --exclude-newer <date>`.
 #
-# v2026.8.13 made that escape hatch sharper: nemo-relay's floor moved to
-# >=0.7.1 (published 2026-08-07), which only resolves because upstream lists
-# it in exclude-newer-package. A manual `--exclude-newer <date>` re-imposes a
-# GLOBAL cutoff, so any date before 2026-08-07 leaves nemo-relay>=0.7.1
-# unsatisfiable and hard-fails the build. Same trap for cryptography==50.0.0
-# and h2 4.4.1. If you ever need that flag, pass a date >= 2026-08-07.
+# v2026.8.13 made that escape hatch sharper, and v2026.9.11 moved the floor
+# again: nemo-relay is now >=0.8.3,<0.9 (0.8.3 published 2026-09-02), which
+# only resolves because upstream lists it in exclude-newer-package. A manual
+# `--exclude-newer <date>` re-imposes a GLOBAL cutoff, so any date before
+# 2026-09-02 leaves nemo-relay>=0.8.3 unsatisfiable and hard-fails the build.
+# Same trap for cryptography==50.0.0 and h2 4.4.1. Re-read this floor on every
+# bump — it tracks whatever nemo-relay pin the pinned tag carries.
 RUN git clone --depth 1 --branch ${HERMES_REF} https://github.com/NousResearch/hermes-agent.git /opt/hermes-agent && \
     cd /opt/hermes-agent && \
-    uv pip install --system --no-cache -e ".[all,messaging,tts-premium,honcho,bedrock,anthropic,edge-tts,hindsight,vision]" && \
+    uv pip install --system --no-cache -e ".[all,messaging,tts-premium,honcho,bedrock,anthropic,edge-tts,vision]" && \
     cd /opt/hermes-agent/web && \
     npm install --silent && \
     npm run build && \
@@ -105,21 +170,22 @@ RUN git clone --depth 1 --branch ${HERMES_REF} https://github.com/NousResearch/h
 # editable from /opt/hermes-agent.
 RUN printf 'docker\n' > /opt/hermes-agent/.install_method
 
-# firecrawl-anydoc: hermes v2026.8.13's PDF / legacy-Office reader for read_file.
-# It is a LAZY dep (tools/lazy_deps.py "tool.doc_extract"), NOT an extra — so it
-# cannot be added to the `.[...]` string above; upstream deliberately withheld a
-# `doc-extract` extra until the package clears uv's 14-day exclude-newer window
-# (first release 2026-08-04). Without it baked in, the FIRST time the agent reads
-# a .pdf/.docx/.xlsx/.pptx/.odt/.rtf/.epub it pip-installs mid-turn into the
-# running container — which this image wipes on every redeploy, so it re-installs
-# after each deploy, and a failed install is retried only every 300s
-# (ANYDOC_RETRY_SECONDS) while the file silently reads as binary garbage.
+# firecrawl-anydoc (the PDF / legacy-Office reader behind read_file) is a CORE
+# dependency as of v2026.8.31 — pyproject.toml pins ==0.2.4 and exempts it from
+# [tool.uv] exclude-newer, so the main install above already has it.
 #
-# `cd /` is LOAD-BEARING: run from /opt/hermes-agent, uv reads that pyproject's
-# [tool.uv] exclude-newer="14 days" and REJECTS this package as too new. From /
-# there is no pyproject to discover, so the pin resolves normally (~2s, 3 MiB,
-# no transitive deps). Drop this layer once upstream ships the mirrored extra.
-RUN cd / && uv pip install --system --no-cache firecrawl-anydoc==0.1.6
+# Do NOT re-pin it in a later layer. We used to (==0.1.6, when it was lazy-only):
+# that layer runs AFTER the editable install and uv DOWNGRADES the core version,
+# and v2026.8.31 also bumped the lazy self-heal pin (tools/lazy_deps.py
+# "tool.doc_extract") to ==0.2.4. _is_satisfied() compares versions, not
+# presence, so the first PDF read tries to heal into HERMES_LAZY_INSTALL_TARGET
+# with a --constraint file built from every installed dist — which pins
+# firecrawl-anydoc==0.1.6 — and uv hard-fails "No solution found". Result:
+# EVERY PDF/.docx/.xlsx/.pptx/.odt/.rtf/.epub read fails, on every deploy,
+# retried every 300s (ANYDOC_RETRY_SECONDS) and never succeeding.
+#
+# Same trap for any other package we might pin separately: on a version bump,
+# grep the new pyproject's core dependencies for anything this Dockerfile pins.
 
 COPY requirements.txt /app/requirements.txt
 RUN uv pip install --system --no-cache -r /app/requirements.txt
@@ -127,6 +193,8 @@ RUN uv pip install --system --no-cache -r /app/requirements.txt
 RUN mkdir -p /data/.hermes
 
 COPY server.py /app/server.py
+COPY migrate_hermes_configs.py /app/migrate_hermes_configs.py
+COPY check_pending_deliveries.py /app/check_pending_deliveries.py
 COPY templates/ /app/templates/
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
